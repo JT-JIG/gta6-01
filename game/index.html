@@ -1,19 +1,197 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Block Dodger</title>
+<title>Solmar City — an open-world crime game</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
-  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a141c; }
+  body { font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: #fff; }
+  #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .panel {
+    background: rgba(10, 18, 26, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 10px;
+    backdrop-filter: blur(4px);
+  }
+
+  /* Top-right stats: money, health, wanted stars. */
+  #stats {
+    position: fixed; top: 14px; right: 14px; z-index: 10;
+    padding: 10px 16px; text-align: right; min-width: 190px;
+  }
+  #money { font-size: 26px; font-weight: 800; color: #7dff9e; letter-spacing: 0.5px; }
+  #health-bar { width: 100%; height: 10px; background: rgba(255,255,255,0.15); border-radius: 5px; margin: 7px 0 5px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: #39d353; border-radius: 5px; transition: width 0.2s; }
+  #stars { font-size: 22px; letter-spacing: 4px; color: #8899aa; }
+  #stars.hot { color: #ffd700; text-shadow: 0 0 10px rgba(255, 215, 0, 0.8); }
+
+  /* Top-left mission objective. */
+  #objective-box {
+    position: fixed; top: 14px; left: 14px; z-index: 10;
+    padding: 10px 14px; max-width: 420px;
+  }
+  #objective-label { font-size: 11px; letter-spacing: 2px; color: #8ec9e8; text-transform: uppercase; }
+  #objective { font-size: 16px; font-weight: 600; margin-top: 3px; line-height: 1.35; }
+
+  /* Minimap, bottom-left. */
+  #minimap-wrap { position: fixed; left: 14px; bottom: 14px; z-index: 10; padding: 6px; }
+  #minimap { display: block; border-radius: 6px; }
+  #map-label { font-size: 10px; letter-spacing: 2px; color: #8ec9e8; text-align: center; margin-top: 4px; }
+
+  /* Speed, bottom-right. */
+  #speed-box { position: fixed; right: 14px; bottom: 14px; z-index: 10; padding: 10px 18px; text-align: right; }
+  #speed { font-size: 34px; font-weight: 800; line-height: 1; }
+  #speed-label { font-size: 11px; color: #8ec9e8; letter-spacing: 1px; }
+
+  /* Context prompt, bottom-centre. */
+  #prompt {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+    z-index: 10; padding: 8px 18px; font-size: 15px; font-weight: 600;
+  }
+  #prompt:empty { display: none; }
+
+  /* Toast, centre-top. */
+  #toast {
+    position: fixed; left: 50%; top: 76px; transform: translateX(-50%);
+    z-index: 12; padding: 10px 22px; font-size: 16px; font-weight: 700;
+    background: rgba(20, 32, 44, 0.9); border: 1px solid rgba(255, 215, 0, 0.5);
+    border-radius: 8px; opacity: 0; pointer-events: none; transition: opacity 0.25s;
+  }
+  #toast.show { opacity: 1; }
+
+  /* Mission briefing card. */
+  #briefing {
+    position: fixed; left: 50%; top: 120px; transform: translateX(-50%);
+    z-index: 12; padding: 16px 22px; max-width: 520px; text-align: center;
+    opacity: 0; pointer-events: none; transition: opacity 0.3s;
+  }
+  #briefing.show { opacity: 1; }
+  #briefing-title { font-size: 22px; font-weight: 800; color: #ffd700; }
+  #briefing-text { font-size: 15px; line-height: 1.5; margin-top: 6px; color: #e8f0f8; }
+
+  /* Crosshair. */
+  #crosshair {
+    position: fixed; left: 50%; top: 50%; z-index: 9;
+    width: 10px; height: 10px; margin: -5px 0 0 -5px;
+    border: 2px solid rgba(255, 255, 255, 0.85); border-radius: 50%;
+    display: none; pointer-events: none;
+  }
+
+  /* Full-screen overlays. */
+  .overlay {
+    position: fixed; inset: 0; z-index: 20; display: flex;
+    flex-direction: column; align-items: center; justify-content: center;
+    background: linear-gradient(160deg, rgba(8, 20, 32, 0.88), rgba(20, 8, 28, 0.88));
+    text-align: center; padding: 20px;
+  }
+  .hidden { display: none !important; }
+  .game-title {
+    font-size: 72px; font-weight: 900; letter-spacing: 4px; line-height: 1;
+    background: linear-gradient(180deg, #ffe259, #ffa751);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: none;
+  }
+  .game-subtitle { font-size: 17px; letter-spacing: 6px; color: #8ec9e8; margin-top: 8px; text-transform: uppercase; }
+  .story { max-width: 560px; font-size: 16px; line-height: 1.55; color: #d8e6f0; margin: 22px 0; }
+  .controls {
+    display: grid; grid-template-columns: auto auto; gap: 4px 22px;
+    font-size: 14px; color: #b8ccd8; text-align: left; margin-bottom: 24px;
+  }
+  .controls b { color: #fff; }
+  .btn {
+    display: block; width: 280px; margin: 8px auto; padding: 13px 20px;
+    font-size: 17px; font-weight: 700; color: #0a141c; background: #ffd700;
+    border: none; border-radius: 8px; cursor: pointer; letter-spacing: 0.5px;
+  }
+  .btn:hover { background: #ffe14d; }
+  .btn.secondary { background: rgba(255, 255, 255, 0.14); color: #fff; border: 1px solid rgba(255,255,255,0.35); }
+  .btn.secondary:hover { background: rgba(255, 255, 255, 0.24); }
+  .menu-title { font-size: 44px; font-weight: 900; letter-spacing: 3px; margin-bottom: 10px; }
+  .menu-text { font-size: 16px; color: #d8e6f0; max-width: 480px; line-height: 1.5; margin-bottom: 20px; }
+  #end-title.wasted { color: #e5484d; }
+  #end-title.busted { color: #4d8dff; }
+  .foot-note { margin-top: 20px; font-size: 12px; color: #7a93a5; }
 </style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.min.js"
+  }
+}
+</script>
 </head>
 <body>
-<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
-<p id="status" role="status" aria-live="polite"></p>
+<canvas id="game-canvas"></canvas>
+
+<div id="stats" class="panel">
+  <div id="money">$250</div>
+  <div id="health-bar"><div id="health-fill"></div></div>
+  <div id="stars">☆☆☆☆☆</div>
+</div>
+
+<div id="objective-box" class="panel">
+  <div id="objective-label">Objective</div>
+  <div id="objective">Welcome to Solmar City</div>
+</div>
+
+<div id="minimap-wrap" class="panel">
+  <canvas id="minimap" width="180" height="180"></canvas>
+  <div id="map-label">SOLMAR CITY</div>
+</div>
+
+<div id="speed-box" class="panel">
+  <div id="speed">0</div>
+  <div id="speed-label">km/h — on foot</div>
+</div>
+
+<div id="prompt" class="panel"></div>
+<div id="toast"></div>
+
+<div id="briefing" class="panel">
+  <div id="briefing-title"></div>
+  <div id="briefing-text"></div>
+</div>
+
+<div id="crosshair"></div>
+
+<div id="start-screen" class="overlay">
+  <div class="game-title">SOLMAR CITY</div>
+  <div class="game-subtitle">An open-world crime game</div>
+  <p class="story">Rex Vega drove one job too many for the wrong people. Now he owes fixer
+  Mara Quinn — and the only way square is through her jobs. Steal cars, outrun the
+  Solmar PD, and work the city until the debt is paid.</p>
+  <div class="controls">
+    <span><b>W A S D / Arrows</b></span><span>Move / drive</span>
+    <span><b>Mouse</b></span><span>Look around (click to lock)</span>
+    <span><b>E</b></span><span>Enter / exit car</span>
+    <span><b>Left click</b></span><span>Shoot (on foot)</span>
+    <span><b>Right click</b></span><span>Punch</span>
+    <span><b>M</b></span><span>Start next mission / delivery job</span>
+    <span><b>Shift</b></span><span>Run</span>
+    <span><b>P / Esc</b></span><span>Pause</span>
+  </div>
+  <button id="start-btn" class="btn">▶ New Game</button>
+  <button id="continue-btn" class="btn secondary">Continue saved game</button>
+  <div class="foot-note">Progress autosaves. A wholly original game — no part of any commercial title.</div>
+</div>
+
+<div id="pause-menu" class="overlay hidden">
+  <div class="menu-title">PAUSED</div>
+  <p class="menu-text">Solmar City waits for no one. Well — except now.</p>
+  <button id="resume-btn" class="btn">Resume</button>
+  <button id="quit-btn" class="btn secondary">Save &amp; quit to menu</button>
+  <button id="restart-btn" class="btn secondary">New game (erases save)</button>
+</div>
+
+<div id="end-screen" class="overlay hidden">
+  <div id="end-title" class="menu-title">WASTED</div>
+  <p id="end-text" class="menu-text"></p>
+  <button id="end-btn" class="btn">Get back up</button>
+</div>
+
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
