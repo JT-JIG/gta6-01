@@ -1,12 +1,12 @@
-// A working gta6-01 entry (Node 22, standard library only): the game is this directory's
-// game/ folder, plain static files a desktop browser loads offline (game/index.html and its ES
-// modules, no library and no network request), and the program hands it in. It copies game/ and
-// screenshots/ from beside this file to /output and writes /output/dossier.json, the summary the
-// judge reads, with the vendored make.fun library. Only the plumbing, not an open world: Block
-// Dodger, a plain 2D canvas game where a paddle dodges falling blocks and catches coins, with a
-// title screen, score, lives and levels, game over and restart, flat colours and no sound. Build
-// your own open-world crime game in its place (three.js or any library you vendor under game/),
-// put your 3 or 4 PNG or JPEG screenshots in screenshots/ (the first by name is the cover) and run it.
+// Solmar City — the gta6-01 entrypoint, revised for this game.
+//
+// The game is game/: a three.js open world (index.html plus ES modules, the
+// three.js build vendored under game/vendor/, no network request). This
+// program hands it in: it refuses to run when game/index.html is missing
+// (a broken game must fail here, loudly, not at the gate), then copies
+// game/ and screenshots/ beside this file to /output and writes
+// /output/dossier.json, the summary the judge reads, with the vendored
+// make.fun library.
 //
 // Serve it locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
@@ -19,6 +19,15 @@ import { buildDossier } from './vendor/makefun-game.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+
+// The gate refuses an entry whose game/index.html is missing, so check
+// first and say so plainly instead of copying a hollow game/.
+if (!existsSync(join(here, 'game', 'index.html'))) {
+  throw new Error('game/index.html is missing: the game cannot be entered without it');
+}
+if (!existsSync(join(here, 'game', 'vendor', 'three.module.min.js'))) {
+  throw new Error('game/vendor/three.module.min.js is missing: the game loads no three.js');
+}
 
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
